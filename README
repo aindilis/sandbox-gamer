@@ -1,0 +1,113 @@
+Gamer
+
+Updated version (2014)
+
+(C) Peter Kissmann - Foundations of AI Group, Saarland University
+    Stefan Edelkamp - Technologie Zentrum Informatik und Informationstechnik, Universitaet Bremen
+    Joerg Hoffmann - Foundations of AI Group, Saarland University
+
+Gamer is licensed under the GNU General Public License. Read the file COPYING for details.
+
+Building should happen via './build'
+Planning is done by './plan <domain-file> <problem-file> <output-file>'
+
+IMPORTANT FOR USAGE OUTSIDE IPC 2014: This is the version for IPC 2014. Thus, we set things up to match that setting. Precisely:
+(a) we compile the BDD library and the JNI interface in 32-bit mode (on the test server this was not possible for the grounding utility, but that should not matter).
+(b) we have to load the Oracle JDK modules
+(c) we set the heap size for Java to match the 4GB available memory
+To set things up matching your machine:
+(a) If you are running a 32-bit machine or use no more than 4GB RAM, no changes for the BDD library and JNI interface necessary (apart from setting the correct paths for a 32-bit executable of Java). Otherwise, edit JavaBDD/Makefile. Comment in lines 20 to 22 (setting EXTRA_FLAGS for a 64-bit machine) and comment out line 24 (to prevent forcing 32-bit mode during compilation). Similarly, comment out line 98 and comment in line 97 (to prevent forcing 32-bit mode during linking)
+(b) Comment out line 5 in both the plan and the build script ("module load ...") to prevent trying to load some modules which you likely do not have -- this is not needed with the version of Gamer downloaded from Peter's homepage, only with the one from the IPC webpage.
+(c) In the plan script, edit line 87 (the actual call to the planner via Java) and edit the numbers for -Xms and -Xmx accordingly. Currently, for Xms we use 16m per GB available RAM and for Xmx 256m per GB available RAM. In systems having the same amount of RAM as you want to allow Gamer to use, you can safely remove the -Xms and -Xmx flags, as they should be set up properly anyway. Basically, this is needed for systems having way more RAM than you want to allow to use, as the default values might prevent the planner from starting altogether.
+
+Requirements:
+Gnu C++ Compiler (g++)
+Sun's (nowadays Oracle's) JDK (version at least 1.5 (Java-5))
+javacc (since version 1.7, until version 1.9 of Gamer)
+
+Notes:
+As of version 2.0 (the IPC 2014 version), bidirectional Dijkstra will be the default algorithm. As such, there is no longer any need to set different timeouts for backward search, as forward and backward search will be performed in an interleaved matter, automatically deciding which direction to take and automatically killing backward search if that takes too long.
+OUTDATED: The planner was designed for IPC (2008 and 2011). If no or only uniform action-costs are present, the Bidirectional BFS will be started to find a plan; otherwise, BDDA* will be started. If BDDA* is used, in a first step a PDB is constructed. This construction time is set to 900 seconds (15 minutes), which was exactly half the time the planners had for any planning problem. If other total times are considered, it might be useful to set this timeout again to half the available time. This timeout is located in the plan skript (line 92).
+The directory 'JavaBDD' contains the sources taken from the sourceforge-project (slightly extended to enable CUDD to store BDDs on disk). The original version can be found in the web at 'http://javabdd.sourceforge.net/'. The most recent version, 2.0, is in the subversion-repository, from where we also got the jdd.jar package.
+The sources for the BDD-library 'CUDD', which is used in our planner, can be found at 'http://vlsi.colorado.edu/~fabio/CUDD/'.
+The directory 'ground_src' contains the sources of the static analyzer.
+The directory 'gamer' contains the source-code of the planner itself. It is written completely in Java (needs JDK > 1.5) and uses JavaBDD as an interface to CUDD to work with BDDs.
+Since version 1.7, the parser of the Java planner has been replaced by one written in JavaCC; hence as of version 1.7 javacc is required to compile the planner. As of version 1.9, this requirement is removed again, as the resulting .java files are added to the planner and need not be generated again (though they will be in case JavaCC is installed.
+Since version 2.0, support for conditional effects has been extended.
+For IPC 2014, we have two versions of this planner: Gamer performs bidirectional Dijkstra with a static ordering that is optimized based on the causal graph before the start. Dynamic-Gamer does so as well, but automatically adapts this ordering by means of dynamic reordering; this reordering is deactivated until after the BDDs for the actions have been constructed; it will be deactivated again based on certain criteria (which would go beyond the scope of this READMIE).
+
+Changes:
+Version 2.0:
+ - improved (in terms of compactness) the grouping of mutex variables.
+ - improved the stopping of backward search by use of a killing thread and a third call of the actual planner.
+ - extended support for conditional effects
+ - implemented automatic variable reordering into the native interface. Thus, the mechanisms already present in the CUDD package can now be used within the planner as well. Currently, this is applied only in bidirectional Dijkstra. The default setting of "Gamer" is to use no reordering at all; that of "Dynamic-Gamer" is to start reordering after creation of the tarnsition relation, and stop it once some criterion has been established (based on the runtime and the time for the reorderings).
+
+Version 1.9:
+ - implemented a bunch of additional variable ordering heuristics; default for time is still the old Gamer ordering heuristic.
+ - removed an old bug that appeared with freecell and some further domains; somehow, the parser does not add a 'none-of-these' to some mutex-groups, though a variable of this group is only removed a no new one added in some of the effects. Added a workaround into the planner; the bug in the grounder is still present (and thus its output is buggy).
+ - removed a bug from the grounder.
+ - improved the build skript to automatically find the main Java directory
+ - the planner now stops if the grounder stops with an error
+ - included the .java files after running javacc, so that the user no longer needs JavaCC on the own system.
+ - updated the CUDD library package to version 2.5.0
+ - removed a problem with the Dijkstra version, which did not read the BDDs for init, goal and trans, when it should.
+
+Version 1.8:
+ - implemented a bidirectional version of Dijkstra's Algorithm (default: bidir BFS or BDDA*).
+ - uses one Dijkstra step for comparison of forward- and backward-searchtime in case of cost-based domains (or fixed use of A* or Dijkstra) -- only in case of A* search; automatically done in Dijkstra.
+ - now BDDA* is the default, even in case of domains without action costs.
+
+Version 1.7:
+ - replaced the old parser by a new one, now based on JavaJJ (hence the new requirement)
+ - if no abstraction is used but a PDB is generated, the BDDs for the initial state, goal states and transition relation are stored on the hard disk, so that they have to be created only once.
+ - the creation of the BDDs has been moved into a number of new classes, in order to decrease the amount of duplicate code in the planner files
+ - the checking of the first backward BFS step has been improved, so that it stops at any time of the preimage calculation, if a total of more than 30 seconds has passed, so that it will not hang in this check for too long; if the first backward step was not finished, only unidirectional BFS or PDB generation with abstraction is performed; if the first backward step is slower than the first forward step by more than a factor of 25 then bidirectional BFS or PDB generation with abstraction is performed; if the factor is at most 25 bidirectional BFS or PDB generation without abstraction is performed
+
+Version 1.6:
+ - removed a bug that resulted in an empty plan if the forward search in bidirectional BFS was never used.
+ - removed a minor problem when some formula consists only of a predicate.
+ - further improved the calculation of the variable ordering (only one run through the permutation for each pair of swap indices instead of two)
+
+Version 1.5 (IPC 2011):
+ - improved the calculation of the variable ordering by performing a linear update (instead of a new calculation of the total distance cost using quadratic time)
+ - improved the calculation of the variable ordering by performing 20 runs with 50000 steps each
+ - set the seed to a fixed value (0), so that results can be reproduced
+ - redirected some (non-error) calls from stderr to stdout
+
+Version 1.4:
+ - changed the start script ('plan') to use a real timeout of 15 minutes for backward search, not CPU time
+ - can now automatically handle problems with action costs that are uniform with BFS
+ - changed the program call for the planner
+ - added some command line options to the program call for the planner
+ - added calculation of abstractions to the planner (inspired by the AAAI-07 paper by Haslum, Botea, Helmert, Bonet, and Koenig, though at the moment only one of the abstractions will be used; also, the abstraction to be used is the one with the highest average heuristic value)
+ - the way, which PDBs to use, is changed (added a new file to determine the supposedly best PDB found so far)
+ - the planner can now calculate a better variable ordering by decreasing the distance of dependent groups from the SAS+ encoding (using greedy random search)
+
+Version 1.1:
+ - changed the transition relation in A* and the Abstraction (for PDB generation) to be a Hashmap instead of a Linked List
+ - changed the output of the PDBs. Now, only non-empty layers are written to disk and an additional file is created stating how many layers were generated
+ - changed the buckets in A* to be a Hashmap, so that large action costs (as present in the parc-printer domain of IPC 2008) can be handled
+ - removed lots of the output of the grounder
+
+Version 1.0c:
+ - updated the CUDD library package to version 2.4.2 (was: 2.4.1)
+
+Version 1.0b:
+ - set the optimization for the CUDD library to -O6
+ - set the optimization for the grounder to -O6
+ - removed the -m32 from the grounder, so no 32-bit libraries are necessary for building it on a 64-bit machine
+
+Version 1.0a:
+In this version, only problems with more recent hard- and software were taken into account, such as support for compilation on 64-bit machines and possibility to compile using a more recent gcc (at least up to 4.4.3). In detail:
+ - adapted the build skript to try to find java in the default java6-directory
+ - adapted the build skript to find and set the SYSTEM_VERSION; if this is x86_64, JavaBDD and CUDD will be created correctly in 64-bit systems
+ - adapted one header files of the grounder, so that this can be compiled using the current gcc 4.4.3
+ - added a missing include of cstdlib in one source file of the grounder
+ - changed one output from %d to %ld in one source file of the grounder to remove a warning
+ - adapted the Makefile for JavaBDD, so that CUDD can be built on a 64-bit Linux system
+ - added 3 lines in cudd_jni.c as nowadays __STDC_VERSION__ is no longer set; thus, it was not correctly compiled on a 64-bit machine with a recent gcc
+ - updated the README to point out that the java directory might necessarily be set by hand in the build skript
+
+Version 1.0 (IPC 2008):
+ - only adapted the Java-files of the planner to show that this is version 1.0 (some mentioned 3.0, others nothing); otherwise, it is exactly the competition version.

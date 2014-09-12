@@ -1,0 +1,5 @@
+gamer (2.0-1) unstable; urgency=low
+
+  * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+
+ -- Andrew J. Dougherty <andrewdo@frdcsa.org>  Fri, 12 Sep 2014 18:06:06 -0500

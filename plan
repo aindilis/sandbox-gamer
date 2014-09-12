@@ -1,0 +1,98 @@
+#!/bin/bash
+
+#setup to load the oracle JDK module for 32-bit Java in IPC 2014
+#for use on different machines this line is not needed.
+#However, it might be necessary to replace the call "java" by a call
+#to a 32-bit executable of java.
+#module load java/Oracle-jdk1.7.0_45-i386
+
+./cleanup
+
+cd $(dirname "$0")
+
+cp $1 ground_exec/domain.pddl
+cp $2 ground_exec/problem.pddl
+cd ground_exec
+sed "s/).*-.*number/)/" domain.pddl > dom.pddl
+mv dom.pddl domain.pddl
+./ground domain.pddl problem.pddl
+out=$?
+if [ $out -ne 0 ]; then
+    exit
+fi
+sed "s/.*total-cost.*//g" problem.pddl > prob.pddl
+mv prob.pddl problem.pddl
+sed "s/^/(/g" problem.psas > prob.psas
+mv prob.psas newProblem.psas
+sed "s/$/)/g" newProblem.psas > prob.psas
+mv prob.psas newProblem.psas
+sed "s/()/[]/g" newProblem.psas > prob.psas
+mv prob.psas newProblem.psas
+sed '$d' newProblem.psas > prob.psas
+mv prob.psas newProblem.psas
+cp newProblem.psas ../orig-1nPar.gdl
+cp newProblem.psas ../abstract0-1nPar.gdl
+
+cd ..
+
+
+
+cp ground_exec/domain.pddl orig-1Dom.gdl
+cp ground_exec/domain.pddl abstract0-1Dom.gdl
+cp ground_exec/problem.pddl orig-1Prob.gdl
+cp ground_exec/problem.pddl abstract0-1Prob.gdl
+cp ground_exec/problem.psas orig-1Part.gdl
+cp ground_exec/problem.psas abstract0-1Part.gdl
+
+#sleep 900 &
+#sleepPid=$!
+#
+#java -Xms96m -Xmx1536m -XX:-UseGCOverheadLimit -classpath gamer.jar:javabdd-2.0.jar -Dbdd=cudd pddl2bdd.PDDL2BDD abstract0-1nPar.gdl cudd -d -a -o gamerBidir &
+#javaPid=$!
+#
+#while [ 1 ]
+#do
+#    ps -p $sleepPid | grep sleep > /dev/null
+#    result=$?
+#    if [ $result -eq 1 ]
+#    then
+#	ps -p $javaPid | grep java > /dev/null
+#	result=$?
+#	if [ $result -eq 0 ]
+#	then
+#	    kill $javaPid
+#	fi
+#	break
+#    fi
+#    ps -p $javaPid | grep java > /dev/null
+#    result=$?
+#    if [ $result -eq 1 ]
+#    then
+#	ps -p $sleepPid | grep sleep > /dev/null
+#	result=$?
+#	if [ $result -eq 0 ]
+#	then
+#	    kill $sleepPid
+#	fi
+#	break
+#    fi
+#    sleep 1
+#done
+#
+#echo "done waiting!"
+
+#time
+#Xms and Xmx are set to match a 4GB system; must be adapted to system at hand
+#currently we use:
+#Xms: 16m for each GB usable RAM
+#Xmx: 256m for each GB usable RAM
+java -Xms64m -Xmx1024m -XX:-UseGCOverheadLimit -classpath gamer.jar:javabdd-2.0.jar -Dbdd=cudd pddl2bdd.PDDL2BDD orig-1nPar.gdl cudd -d -a -o gamerBidir
+
+#out=$?
+#if [ $out -ne 0 ]; then
+#    #time
+#    java -Xms96m -Xmx1536m -XX:-UseGCOverheadLimit -classpath gamer.jar:javabdd-2.0.jar -Dbdd=cudd pddl2bdd.PDDL2BDD orig-1nPar.gdl cudd -d -a -u -f
+#fi
+
+
+mv plan_output $3

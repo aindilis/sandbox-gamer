@@ -1,0 +1,42 @@
+#! /bin/bash
+
+#setup to load the oracle JDK module for 32-bit Java in IPC 2014
+#for use on different machines this line is not needed.
+#However, it might be necessary to set JAVA_ROOT123 to the path
+#to the 32-bit executable of java.
+#module load java/Oracle-jdk1.7.0_45/i386
+
+currentDir=$(pwd)
+
+follow () { cd $(dirname $(readlink -e "$1")); }
+
+JAVACLINK=$(which javac)
+follow $JAVACLINK
+JAVACDIR=$(pwd)
+cd ..
+export JAVA_ROOT123=$(pwd)
+export SYSTEM_VERSION=$(uname -m)
+cd $currentDir
+cd JavaBDD
+make
+mv javabdd-2.0.jar ..
+mv libcudd.so ..
+
+cd ..
+cd ground_src
+export GROUND_TOPDIR=$(pwd)
+make
+mv ground ../ground_exec
+
+cd ..
+cd gamer/src
+cd pddl2bdd/parser
+javacc GroundedPDDLParser.jj
+cd ../..
+mkdir compiled
+javac -d compiled -classpath ../../javabdd-2.0.jar pddl2bdd/PDDL2BDD.java pddl2bdd/parser/*.java pddl2bdd/parser/logic/*.java pddl2bdd/pddl2bdd/*.java pddl2bdd/util/*.java pddl2bdd/variableOrdering/*.java pddl2bdd/variableOrdering/heuristic/*.java #pddl2bdd/variableOrdering/metric/*.java
+cd compiled
+jar cf gamer.jar pddl2bdd
+mv gamer.jar ../../..
+cd ..
+rm -rf compiled

@@ -1,0 +1,579 @@
+/*
+ * Gamer, a tool for finding optimal plans
+ * Copyright (C) 2007-2013 by Peter Kissmann
+ * 
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ * 
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
+ */
+
+/**
+ * New parser for grounded PDDL.
+ *
+ * @author Peter Kissmann
+ * @version 2.0
+ */
+options
+{
+    static = true;
+}
+
+PARSER_BEGIN(GroundedPDDLParser)
+package pddl2bdd.parser;
+import pddl2bdd.parser.logic.*;
+import java.io.*;
+import java.util.*;
+
+public class GroundedPDDLParser
+{
+    public static void parse(String partitionFileName)
+    {
+        String domainFileName = partitionFileName.substring(0, partitionFileName.length() - 8) + "Dom.gdl";
+        String problemFileName = partitionFileName.substring(0, partitionFileName.length() - 8) + "Prob.gdl";
+        if (partitionFileName.startsWith("abstract"))
+        {
+            String [] partitionFileNameParts = partitionFileName.split("-", 2);
+            partitionFileName = "orig-" + partitionFileNameParts [1];
+        }
+        System.out.println("prob: " + problemFileName);
+        System.out.println("dom: " + domainFileName);
+        System.out.println("part: " + partitionFileName);
+        try
+        {
+            FileInputStream fis;
+            GroundedPDDLParser parser;
+            actions = new Vector < Action > ();
+            initialState = new Vector < Predicate > ();
+            partitioning = new Vector < Vector < Predicate > > ();
+            File goalBDDFile = new File("goal");
+            if (!goalBDDFile.exists())
+            {
+                System.out.println("Parsing domain file...");
+                fis = new FileInputStream(domainFileName);
+                parser = new GroundedPDDLParser(fis);
+                lastCost = 0;
+                parser.domain();
+                System.out.println("done.");
+                System.out.println("Parsing problem file...");
+                fis = new FileInputStream(problemFileName);
+                parser.ReInit(fis);
+                parser.problem();
+                System.out.println("done.");
+                System.out.println("Parsing partition file...");
+                fis = new FileInputStream(partitionFileName);
+                parser.ReInit(fis);
+	            parser.partition();
+	            System.out.println("done.");
+	            System.out.println("Checking for only del-effects from groups with no \'none-of-these\'-variables...");
+                LinkedList<LinkedList<String>> partition = new LinkedList<LinkedList<String>>();
+                ListIterator<Vector<Predicate>> partitionIt = partitioning.listIterator();
+		        while (partitionIt.hasNext()) {
+		            Vector<Predicate> group = partitionIt.next();
+		            ListIterator<Predicate> groupIt = group.listIterator();
+		            LinkedList<String> singlePartition = new LinkedList<String>();
+		            while (groupIt.hasNext()) {
+		                singlePartition.add(groupIt.next().getName());
+		            }
+		            partition.add(singlePartition);
+		        }
+                ListIterator < Action > actionIt = actions.listIterator();
+                boolean errorFound = false;
+                while (actionIt.hasNext())
+                {
+                	errorFound |= actionIt.next().checkEffect(partition);
+            	}
+            	if (errorFound) {
+            		StringBuilder output = new StringBuilder(10000);
+            		ListIterator<LinkedList<String>> partitionStringIt = partition.listIterator();
+            		while (partitionStringIt.hasNext()) {
+	                	LinkedList<String> part = partitionStringIt.next();
+	                	ListIterator<String> partIt = part.listIterator();
+	                	output.append("[]\n");
+		                while (partIt.hasNext()) {
+		                    output.append("(" + partIt.next() + ")\n");
+		                }
+		                output.append("[]\n");
+	                }
+		            FileWriter writer;
+		            try {
+		                writer = new FileWriter(partitionFileName);
+		                writer.write(output.toString());
+		                writer.close();
+		                System.out.println("Parsing partition file again...");
+		                partitioning.clear();
+		                fis = new FileInputStream(partitionFileName);
+		                parser.ReInit(fis);
+			            parser.partition();
+			            System.out.println("done.");
+		            } catch (Exception e) {
+		                System.err.println(e.getMessage());
+		                System.exit(1);
+		            }
+                }
+            	System.out.println("done.");
+            }
+            else
+            {
+                System.out.println("Parsing partition file...");
+                fis = new FileInputStream(partitionFileName);
+                parser = new GroundedPDDLParser(fis);
+	            parser.partition();
+	            System.out.println("done.");
+            }
+        }
+        catch (Exception e)
+        {
+            System.err.println("Error: " + e.getMessage());
+            System.exit(1);
+        }
+    }
+
+    public static boolean isUniformCost()
+    {
+        if (actions.size() == 0) // should only happen if goalBDD file is present, so that a PDB has been generated
+        {
+            return false;
+        }
+        ListIterator < Action > actionIt = actions.listIterator();
+        int lastFoundCost = - 1;
+        while (actionIt.hasNext())
+        {
+            int cost = actionIt.next().getCost();
+            if (lastFoundCost == - 1)
+            {
+                lastFoundCost = cost;
+            }
+            else
+            {
+                if (lastFoundCost != cost)
+                {
+                    return false;
+                }
+            }
+        }
+        // if no costs present or all uniform, set costs to 1, in case of A* search
+        actionIt = actions.listIterator();
+        while (actionIt.hasNext())
+        {
+            actionIt.next().setCost(1);
+        }
+        return true;
+    }
+
+    public static void cleanup()
+    {
+        actions.clear();
+        actions = null;
+        initialState.clear();
+        initialState = null;
+        goalDescription = null;
+        partitioning.clear();
+        partitioning = null;
+    }
+
+    public static Vector < Action > actions;
+
+    public static Vector < Predicate > initialState;
+
+    public static Expression goalDescription;
+
+    public static Vector < Vector < Predicate > > partitioning;
+
+    public static int lastCost;
+}
+
+PARSER_END(GroundedPDDLParser)
+
+SKIP :
+{
+    " "
+|   "\r"
+|   "\t"
+|   "\n"
+}
+
+TOKEN :
+{
+    < DEFINE_TOK : "(" "define " >
+|   < DOMAIN_TOK : "(" "domain " >
+|   < REQUIRE_TOK : "(" ":requirements " >
+|   < PREDS_TOK : "(" ":predicates " >
+|   < FUNC_TOK : "(" ":functions " >
+|   < ACTION_TOK : "(" ":action " >
+|   < PARAM_TOK : ":parameters " >
+|   < PREC_TOK : ":precondition " >
+|   < EFF_TOK : ":effect " >
+|   < OR_TOK : "(" "or " >
+|   < AND_TOK : "(" "and " >
+|   < NOT_TOK : "(" "not " >
+|   < INC_TOK : "(" "increase " >
+|   < WHEN_TOK : "(" "when " >
+|   < PROBLEM_TOK : "(" "problem " >
+|   < DOMAIN_TEST_TOK : "(" ":domain " >
+|   < INIT_TOK : "(" ":init " >
+|   < GOAL_TOK : "(" ":goal " >
+|   < NAME : [ "a"-"z", "A"-"Z" ] ([ "a"-"z", "A"-"Z", "0"-"9", "_", ".", "-" ])* >
+|   < NUMBER :
+        "0"
+    |   [ "1"-"9" ] ([ "0"-"9" ])* >
+}
+
+void domain() :
+{}
+{
+    < DEFINE_TOK > domainDeclaration() [ requirements() ] [ predicates() ] [ functions() ]
+    (
+        action()
+    )*
+    ")"
+}
+
+void domainDeclaration() :
+{}
+{
+    < DOMAIN_TOK > < NAME > ")"
+}
+
+void requirements() :
+{}
+{
+    < REQUIRE_TOK > (":" < NAME >)* ")"
+}
+
+void predicates() :
+{}
+{
+    < PREDS_TOK >
+    (
+        predicate()
+    )*
+    ")"
+}
+
+void functions() :
+{}
+{
+    < FUNC_TOK >
+    (
+        predicate()
+    )*
+    ")"
+}
+
+void action() :
+{
+    Action action;
+    Token name;
+    Expression prec;
+    Expression eff;
+}
+{
+    < ACTION_TOK > name = < NAME > [ parameters() ] prec = precondition() eff = effect() ")"
+    {
+        action = new Action();
+        action.setName(name.image);
+        action.setPrecondition(prec);
+        action.setEffect(eff);
+        action.setCost(lastCost);
+        actions.add(action);
+        lastCost = 0;
+    }
+}
+
+void parameters() :
+{}
+{
+    < PARAM_TOK > "(" ")"
+}
+
+Expression precondition() :
+{
+    Expression expr;
+}
+{
+    < PREC_TOK > expr = expression()
+    {
+        return expr;
+    }
+}
+
+Expression effect() :
+{
+    Expression expr;
+}
+{
+    < EFF_TOK > expr = effExpression()
+    {
+        return expr;
+    }
+}
+
+Expression expression() :
+{
+    Expression expr;
+    Vector < Expression > exprList;
+}
+{
+    expr = predicate()
+    {
+        return expr;
+    }
+|   < OR_TOK >
+    {
+        exprList = new Vector < Expression > ();
+    }
+    (
+        expr = expression()
+        {
+            exprList.add(expr);
+        }
+    )*
+    ")"
+    {
+        expr = new AndOrTerm();
+        ((AndOrTerm) expr).setIsAndTerm(false);
+        ((AndOrTerm) expr).setTerms(exprList);
+        return expr;
+    }
+|   < AND_TOK >
+    {
+        exprList = new Vector < Expression > ();
+    }
+    (
+        expr = expression()
+        {
+            exprList.add(expr);
+        }
+    )*
+    ")"
+    {
+        expr = new AndOrTerm();
+        ((AndOrTerm) expr).setIsAndTerm(true);
+        ((AndOrTerm) expr).setTerms(exprList);
+        return expr;
+    }
+|   < NOT_TOK > expr = expression() ")"
+    {
+        NotTerm ret = new NotTerm();
+        ret.setTerm(expr);
+        return ret;
+    }
+}
+
+Expression effExpression() :
+{
+    Expression condpre;
+    Expression expr;
+    Vector < Expression > exprList;
+    Token cost;
+}
+{
+    expr = predicate()
+    {
+        return expr;
+    }
+|   < AND_TOK >
+    {
+        exprList = new Vector < Expression > ();
+    }
+    (
+        expr = effExpression()
+        {
+            if (expr != null)
+            {
+                exprList.add(expr);
+            }
+        }
+    )*
+    ")"
+    {
+        expr = new AndOrTerm();
+        ((AndOrTerm) expr).setIsAndTerm(true);
+        ((AndOrTerm) expr).setTerms(exprList);
+        return expr;
+    }
+|   < NOT_TOK > expr = effExpression() ")"
+    {
+        if (expr == null)
+        {
+            System.err.println("Error: Cannot handle action costs in negation!");
+            System.exit(1);
+        }
+        NotTerm ret = new NotTerm();
+        ret.setTerm(expr);
+        return ret;
+    }
+|   < INC_TOK > predicate() cost = < NUMBER > ")"
+    {
+        if (lastCost > 0)
+        {
+            System.err.println("Error: At least two action costs provided!");
+            System.exit(1);
+        }
+        lastCost = Integer.parseInt(cost.image);
+        return null;
+    }
+|   < WHEN_TOK > condpre = expression() expr = condeffExpression() ")"
+    {
+        if (condpre == null)
+        {
+            System.err.println("Error in parsing conditional effect's condition!");
+            System.exit(1);
+        }
+        if (expr == null)
+        {
+            System.err.println("Error in parsing conditional effect's effect!");
+            System.exit(1);
+        }
+        Condition cond = new Condition();
+        cond.setPre(condpre);
+        cond.setEff(expr);
+        return cond;
+    }
+}
+
+Expression condeffExpression() :
+{
+    Expression expr;
+    Vector < Expression > exprList;
+    Token cost;
+}
+{
+    expr = predicate()
+    {
+        return expr;
+    }
+|   < AND_TOK >
+    {
+        exprList = new Vector < Expression > ();
+    }
+    (
+        expr = condeffExpression()
+        {
+            if (expr != null)
+            {
+                exprList.add(expr);
+            }
+        }
+    )*
+    ")"
+    {
+        expr = new AndOrTerm();
+        ((AndOrTerm) expr).setIsAndTerm(true);
+        ((AndOrTerm) expr).setTerms(exprList);
+        return expr;
+    }
+|   < NOT_TOK > expr = condeffExpression() ")"
+    {
+        if (expr == null)
+        {
+            System.err.println("Error: Cannot handle action costs in negation!");
+            System.exit(1);
+        }
+        NotTerm ret = new NotTerm();
+        ret.setTerm(expr);
+        return ret;
+    }
+|   < INC_TOK > predicate() cost = < NUMBER > ")"
+    {
+        System.err.println("Error: Action costs in conditional effects not supported!");
+        System.exit(1);
+    }
+}
+
+Predicate predicate() :
+{
+    Token name;
+}
+{
+    "(" name = < NAME > ")"
+    {
+        Predicate pred = new Predicate();
+        pred.setName(name.image);
+        return pred;
+    }
+}
+
+void problem() :
+{}
+{
+    < DEFINE_TOK > problemDeclaration() domainTest() init() goal() ")"
+}
+
+void problemDeclaration() :
+{}
+{
+    < PROBLEM_TOK > < NAME > ")"
+}
+
+void domainTest() :
+{}
+{
+    < DOMAIN_TEST_TOK > < NAME > ")"
+}
+
+void init() :
+{
+    Predicate pred;
+}
+{
+    < INIT_TOK >
+    (
+        pred = predicate()
+        {
+            initialState.add(pred);
+        }
+    )*
+    ")"
+}
+
+void goal() :
+{
+    Expression expr;
+}
+{
+    < GOAL_TOK > expr = expression() ")"
+    {
+        goalDescription = expr;
+    }
+}
+
+void partition() :
+{}
+{
+    (
+        group()
+    )*
+}
+
+void group() :
+{
+    Predicate pred;
+    Vector < Predicate > group;
+}
+{
+    "[" "]"
+    {
+        group = new Vector < Predicate > ();
+    }
+    (
+        pred = predicate()
+        {
+            group.add(pred);
+        }
+    )*
+    "[" "]"
+    {
+        partitioning.add(group);
+    }
+}
